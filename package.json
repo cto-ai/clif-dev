@@ -1,0 +1,34 @@
+{
+  "name": "clif-dev",
+  "version": "1.0.0",
+  "description": "👾 clif developer tool",
+  "main": "index.js",
+  "bin": "./cmd.js",
+  "type": "module",
+  "scripts": {
+    "test": "tap --100 test/*.test.js",
+    "cov": "cov",
+    "lint": "standard",
+    "check": "npm test && npm run lint"
+  },
+  "precommit": [
+    "lint",
+    "test"
+  ],
+  "author": "David Mark Clements <dave@cto.ai>",
+  "license": "MIT",
+  "dependencies": {
+    "clif": "^1.0.0-rc.0",
+    "debug": "^4.3.1",
+    "diff": "^5.0.0",
+    "nonsynchronous": "^1.2.0",
+    "read-pkg-up": "^7.0.1",
+    "tap-parser": "^10.1.0",
+    "unijoin": "^1.0.0"
+  },
+  "devDependencies": {
+    "pre-commit": "^1.2.2",
+    "standard": "^16.0.3",
+    "tapx": "0.2.0"
+  }
+}
