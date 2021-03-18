@@ -239,7 +239,12 @@ async function * snaps () {
     const selection = await select.run()
     process.stdout.write('\u001b[2J\u001b[0;0H')
     console.log(strike('                                  '))
-    console.log(JSON.parse(snappies[selection]))
+    try {
+      console.log(JSON.parse(snappies[selection]))
+    } catch {
+      console.log(snappies[selection])
+    }
+    
     console.log(strike('                                  '))
     initial = keys.findIndex((k) => k === selection)
   }
