@@ -10,7 +10,7 @@ const common = {
 __tests__
 `
 
-export const cliTest = `
+export const test = `
 test('__command__', async ({ is, matchSnapshot }) => {
   const mocks = {
     ...common.mocks

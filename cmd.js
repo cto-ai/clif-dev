@@ -2,14 +2,19 @@
 import { spawn, exec } from 'child_process'
 import { promisify, inspect } from 'util'
 import { on, once } from 'events'
-import { join } from 'path'
-import { createWriteStream } from 'fs'
+import { join, relative } from 'path'
+import fs, { createWriteStream } from 'fs'
 import clif, { Fail } from 'clif'
 import Parser from 'tap-parser'
 import { diffChars } from 'diff'
 import prostamp from 'prostamp'
+import enquirer from 'enquirer'
 import { intercept, metadata } from './lib/grapple.js'
 import * as templates from './templates/index.js'
+const { prompt, Select } = enquirer
+const { readdir } = fs.promises
+
+const cwd = process.cwd()
 
 const help = promisify(({ entry, command }, cb) => {
   const args = command.split(' ').slice(1).join(' ')
@@ -41,7 +46,7 @@ function * traverse ({ bin, structure, parents = [] }) {
   for (const [command, meta] of Object.entries(structure)) {
     if (command === '$') continue
     if (meta.default) {
-      yield [[bin, ...parents, command].join(' '), meta]
+      yield [[bin, ...parents, command].filter(Boolean).join(' '), meta]
       continue
     }
     yield * traverse({ bin, structure: meta, parents: [...parents, command] })
@@ -90,12 +95,12 @@ async function * docs () {
   for await (const output of result) process.stdout.write(output)
 }
 
-async function * tests ({ inputs, implicits }) {
-  const { type = 'cli' } = inputs
-  const { structure } = await intercept()
+async function * tests ({ implicits }) {
+  const { type, structure } = await intercept()
   const { binName: bin, config, dir } = await metadata()
-  const info = [...traverse({ bin, structure })].sort(([a], [b]) => a.localeCompare(b))
-  const tmpl = config && config.tests ? { ...templates.tests, ...config.tests } : templates.tests
+  const info = [...traverse({ type, bin, structure })].sort(([a], [b]) => a.localeCompare(b))
+  const baseTmpl = templates.tests[type] || {}
+  const tmpl = config && config.tests ? { ...baseTmpl, ...config.tests } : baseTmpl
 
   const commands = info.sort(([a], [b]) => a.localeCompare(b)).reduce((result, [command, meta]) => {
     // TODO positionals - optional and required
@@ -107,9 +112,9 @@ async function * tests ({ inputs, implicits }) {
         const dash = (k.length > 1) ? '--' : '-'
         const aliases = [alias].flat().map((alias) => {
           const dash = (alias.length > 1) ? '--' : '-'
-          return (type === 'boolean' ? `${dash}${alias}` : `${dash}${alias}="VALUE"`)
+          return (type === 'boolean' ? `${dash}${alias}` : `${dash}${alias} "TEST"`)
         })
-        const name = (type === 'boolean' ? `${dash}${k}` : `${dash}${k}="VALUE"`)
+        const name = (type === 'boolean' ? `${dash}${k}` : `${dash}${k} "TEST"`)
         return { name, aliases }
       })
 
@@ -133,38 +138,40 @@ async function * tests ({ inputs, implicits }) {
 
     return result
   }, [])
-  const testTmpl = type === 'cli' ? tmpl.cliTest : tmpl.cmdTest
-
+  
   if (implicits.positionals.length === 0) {
     const tests = {}
 
     for (const command of commands) {
-      const [, top] = command.split(' ')
+      const parts = command.split(' ')
+      const top = parts[0] === bin ? parts[1] : parts[0]
       tests[top] = tests[top] || []
-      tests[top].push(prostamp(testTmpl, { command }))
+      tests[top].push(prostamp(tmpl.test, { command }))
     }
-
+    const testDir = join(dir, 'test')
     for (const top of Object.keys(tests)) {
+      const target = join(testDir, `${top}.test.js`)
       try {
-        const file = createWriteStream(join(dir, 'test', `${top}.test.js`), { flags: 'wx' })
+        const file = createWriteStream(target, { flags: 'wx' })
         await once(file, 'open')
         const result = prostamp(tmpl.file, { tests: tests[top] })
         for await (const output of result) file.write(output)
+        console.info(`✅ Tests for ${top} commands written to ${relative(cwd, target)}`)
       } catch (err) {
         const { code } = err
         if (code === 'ENOENT') throw Error('test folder not found')
-        if (code === 'EEXIST') console.error(`Refusing to overwrite test/${top}.test.js`)
+        if (code === 'EEXIST') console.error(`⚠️  Refusing to overwrite ${relative(cwd, target)}. Try clif-dev render tests <cmd>`)
         else throw err
       }
     }
   } else {
     const tests = []
     const cmd = implicits.positionals.filter(([f]) => f !== '-')
-    if (implicits.positionals[0] !== bin) cmd.unshift(bin)
+    if (type === 'cli' && implicits.positionals[0] !== bin) cmd.unshift(bin)
     const matcher = RegExp(cmd.join(' '))
-    for (const command of commands) {
+    for (let command of commands) {
       if (matcher.test(command) === false) continue
-      tests.push(prostamp(testTmpl, { command }))
+      tests.push(prostamp(tmpl.test, { command }))
     }
     const result = prostamp(cmd.length === 2 ? tmpl.file : '__tests__', { tests })
     for await (const output of result) process.stdout.write(output)
@@ -202,6 +209,42 @@ async function * diff ({ argv }) {
   }
 }
 
+async function * snaps () {
+  const { dir } = await metadata()
+  const snapshots = join(dir, 'tap-snapshots')
+  const files = await readdir(snapshots)
+  const choices = files
+    .filter((f) => /test-/.test(f))
+    .map((f) => ({name: f, message: f.slice(5, -13)}))
+  process.stdout.write('\u001b[2J\u001b[0;0H')
+  const { file } = await prompt({ 
+    type: 'select', 
+    choices, 
+    name: 'file', 
+    message: 'Select snapshots',
+    limit: 10
+  })
+  const { default: snappies } = await import(join(snapshots, file))
+  const keys = Object.keys(snappies)
+  let initial = 0
+  while (true) {
+    const select = new Select({
+      initial,
+      choices: keys.map((f, i) => ({index: i, name: f, message: f.replace(/.+ TAP /,'')})),
+      name: 'selection', 
+      message: 'Select snapshot',
+      limit: 10
+    })
+    select.number(initial)
+    const selection = await select.run()
+    process.stdout.write('\u001b[2J\u001b[0;0H')
+    console.log(strike('                                  '))
+    console.log(JSON.parse(snappies[selection]))
+    console.log(strike('                                  '))
+    initial = keys.findIndex((k) => k === selection)
+  }
+}
+
 const structure = {
   $: {
     describe: '👾 clif developer tool'
@@ -221,17 +264,16 @@ const structure = {
     },
     tests: {
       describe: 'Generate command test skeletons',
-      default: tests,
-      $type: {
-        describe: 'Type of tests: cmd, cli',
-        alias: 't',
-        type: 'string'
-      }
+      default: tests
     }
   },
   diff: {
     describe: 'View a snapshot diff as terminal output',
     default: diff
+  },
+  snaps: {
+    describe: 'Explore snapshots as terminal output',
+    default: snaps
   }
 }
 
