@@ -138,7 +138,7 @@ async function * tests ({ implicits }) {
 
     return result
   }, [])
-  
+
   if (implicits.positionals.length === 0) {
     const tests = {}
 
@@ -169,7 +169,7 @@ async function * tests ({ implicits }) {
     const cmd = implicits.positionals.filter(([f]) => f !== '-')
     if (type === 'cli' && implicits.positionals[0] !== bin) cmd.unshift(bin)
     const matcher = RegExp(cmd.join(' '))
-    for (let command of commands) {
+    for (const command of commands) {
       if (matcher.test(command) === false) continue
       tests.push(prostamp(tmpl.test, { command }))
     }
@@ -189,6 +189,7 @@ async function * diff ({ argv }) {
   for await (const results of on(parser, 'result')) {
     for (const result of results) {
       if (result.ok) continue
+      if (!result.diag || !result.diag.diff) continue
       const [,,, a, b] = result.diag.diff.split('\n')
       const changes = diffChars(JSON.parse(a.slice(1)), JSON.parse(b.slice(1)))
       result.diag.diff = ''
@@ -215,12 +216,12 @@ async function * snaps () {
   const files = await readdir(snapshots)
   const choices = files
     .filter((f) => /test-/.test(f))
-    .map((f) => ({name: f, message: f.slice(5, -13)}))
+    .map((f) => ({ name: f, message: f.slice(5, -13) }))
   process.stdout.write('\u001b[2J\u001b[0;0H')
-  const { file } = await prompt({ 
-    type: 'select', 
-    choices, 
-    name: 'file', 
+  const { file } = await prompt({
+    type: 'select',
+    choices,
+    name: 'file',
     message: 'Select snapshots',
     limit: 10
   })
@@ -230,12 +231,11 @@ async function * snaps () {
   while (true) {
     const select = new Select({
       initial,
-      choices: keys.map((f, i) => ({index: i, name: f, message: f.replace(/.+ TAP /,'')})),
-      name: 'selection', 
+      choices: keys.map((f, i) => ({ index: i, name: f, message: f.replace(/.+ TAP /, '') })),
+      name: 'selection',
       message: 'Select snapshot',
       limit: 10
     })
-    select.number(initial)
     const selection = await select.run()
     process.stdout.write('\u001b[2J\u001b[0;0H')
     console.log(strike('                                  '))
@@ -244,7 +244,7 @@ async function * snaps () {
     } catch {
       console.log(snappies[selection])
     }
-    
+
     console.log(strike('                                  '))
     initial = keys.findIndex((k) => k === selection)
   }
