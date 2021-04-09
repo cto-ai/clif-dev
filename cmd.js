@@ -108,7 +108,7 @@ async function * tests ({ implicits }) {
     const flags = Object.entries(meta)
       .filter(([k]) => k[0] === '$')
       .map(([k, v]) => [k.slice(1), v])
-      .map(([k, { type, alias }]) => {
+      .map(([k, { type, alias = [] }]) => {
         const dash = (k.length > 1) ? '--' : '-'
         const aliases = [alias].flat().map((alias) => {
           const dash = (alias.length > 1) ? '--' : '-'
