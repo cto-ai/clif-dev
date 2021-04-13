@@ -3,7 +3,9 @@
   "version": "1.0.4",
   "description": "👾 clif developer tool",
   "main": "index.js",
-  "bin": "./cmd.js",
+  "bin": {
+    "clif-dev": "cmd.js"
+  },
   "type": "module",
   "scripts": {
     "test": "tap --100 test/*.test.js",
@@ -36,5 +38,18 @@
     "pre-commit": "^1.2.2",
     "standard": "^16.0.3",
     "tapx": "0.2.0"
-  }
+  },
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cto-ai/clif-dev.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/cto-ai/clif-dev/issues"
+  },
+  "homepage": "https://github.com/cto-ai/clif-dev#readme"
 }
